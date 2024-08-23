@@ -1,83 +1,79 @@
 #!/usr/bin/env python3
 """ a module for the LFUCache class """
-from collections import OrderedDict
+from collections import defaultdict, OrderedDict
 BaseCaching = __import__('base_caching').BaseCaching
 
 
 class LFUCache(BaseCaching):
-    """ a LFU cache implementation that inherits from BaseCaching """
-
-    # to be used for storing values and use order
-    use_dict = {}
-    frequency_dict = {}
-    min_LFU = 1
+    """ LFU Cache class that inherits from BaseCaching """
 
     def __init__(self):
-        """ initalizes the LFU cache class """
+        """ Initialize the LFUCache class """
         super().__init__()
+        self.frequency_dict = defaultdict(int)  # Frequency of access for each key
+        self.use_order = OrderedDict()  # Maintains the order of usage for LRU in case of a tie
 
     def put(self, key, item):
         """
-            sets key and item in BaseCaching self.cache_data attribute
-            makes sure the cache is below its BaseCaching.MAX_ITEMS
-            if not it removes last item before adding new item
-            if key or item is None no operation is done
+        Assign item to the dictionary self.cache_data with the key.
+        If the number of items in self.cache_data exceeds BaseCaching.MAX_ITEMS,
+        discard the least frequently used item (LFU algorithm). If there is a tie,
+        discard the least recently used item among them.
         """
-        if key is not None and item is not None:
-            if len(self.cache_data) >= self.MAX_ITEMS:
-                for k, v in self.use_dict.items():
-                    if v == self.MAX_ITEMS:
-                        self.cache_data.pop(k)
-                        print('DISCARD: {}'.format(k))
-                        break
-            self.LRU(key)
+        if key is None or item is None:
+            return
+
+        # Update the item in the cache
+        if key in self.cache_data:
             self.cache_data[key] = item
+            self.frequency_dict[key] += 1
+            # Update the order to mark this key as recently used
+            self.use_order.move_to_end(key)
+        else:
+            if len(self.cache_data) >= BaseCaching.MAX_ITEMS:
+                # Find the LFU key (with the lowest frequency)
+                min_frequency = min(self.frequency_dict.values())
+                # Get all keys with the minimum frequency
+                lfu_keys = [k for k in self.frequency_dict if self.frequency_dict[k] == min_frequency]
+                # If there is a tie, remove the least recently used one
+                if len(lfu_keys) > 1:
+                    # Find the LRU among the LFU keys
+                    lfu_lru_key = None
+                    for k in self.use_order:
+                        if k in lfu_keys:
+                            lfu_lru_key = k
+                            break
+                else:
+                    lfu_lru_key = lfu_keys[0]
+
+                # Remove the LFU key from the cache and related tracking dicts
+                if lfu_lru_key:
+                    del self.cache_data[lfu_lru_key]
+                    del self.frequency_dict[lfu_lru_key]
+                    self.use_order.pop(lfu_lru_key)
+                    print(f"DISCARD: {lfu_lru_key}")
+
+            # Add the new key-value pair to cache
+            self.cache_data[key] = item
+            self.frequency_dict[key] = 1
+            self.use_order[key] = None  # Add the new key to the usage order
 
     def get(self, key):
         """
-            gets items associated with key from self.cache_data
-            if key is None or not a valid key it returns None
+        Return the value in self.cache_data linked to key.
+        If key is None or if the key doesn't exist in self.cache_data, return None.
         """
-
-        if key is None:
+        if key is None or key not in self.cache_data:
             return None
 
-        try:
-            item = self.cache_data[key]
-            self.LRU(key)
-            return item
-        except KeyError:
-            return None
+        # Update the frequency and usage order for this key
+        self.frequency_dict[key] += 1
+        self.use_order.move_to_end(key)
 
-    def LRU(self, key):
-        """ logs the use case for keys in the use_dict """
+        return self.cache_data[key]
 
-        if key is None:
-            return None
-
-        # if new key
-        if key not in self.use_dict.keys():
-            # if cache is full
-            if len(self.use_dict) >= self.MAX_ITEMS:
-                for k in self.use_dict.keys():
-                    # find the LRU key
-                    if self.use_dict[k] == self.MAX_ITEMS:
-                        # remove LRU key
-                        self.use_dict.pop(k)
-                        self.use_dict[key] = 1
-                        break
-            else:
-                # if cache isn't full simply add new key
-                self.use_dict[key] = 1
-            # adjust rank of all remaining keys
-            for k in self.use_dict.keys():
-                if k != key:
-                    self.use_dict[k] += 1
-        else:
-            key_rank = self.use_dict[key]
-            self.use_dict[key] = 1
-            # change rank for all rank smaller than previous rank of key
-            for k in self.use_dict.keys():
-                if k != key:
-                    if self.use_dict[k] < key_rank:
-                        self.use_dict[k] += 1
+    def print_cache(self):
+        """ Print the cache data """
+        print("Current cache:")
+        for key, value in self.cache_data.items():
+            print(f"{key}: {value}")
